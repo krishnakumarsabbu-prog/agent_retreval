@@ -1,55 +1,97 @@
+import fs from 'fs'
+import { RepositoryIndex, SearchResult } from './types/index.js'
+import { indexRepository } from './indexer/indexer.js'
+import { searchFiles } from './retrieval/searcher.js'
+import { expandGraphFromSeeds } from './graph/graphBuilder.js'
 
-import fs from "fs"
-import {scanDirectory} from "./utils/fileScanner.js"
-import {detectAnchors} from "./indexing/anchorDetector.js"
-import {minePatterns} from "./indexing/patternMining.js"
-import {extractArchitecture} from "./indexing/architectureExtractor.js"
-import {buildStructuralEmbeddings} from "./indexing/structuralEmbeddings.js"
-import {buildGraph} from "./graph/codeGraph.js"
-import {simpleSearch} from "./retrieval/vectorSearch.js"
-import {expandGraph} from "./retrieval/graphRetriever.js"
-import {AgentIndex} from "./types/types.js"
+let currentIndex: RepositoryIndex | null = null
 
-let indexData:AgentIndex
+export function buildIndex(repositoryPath: string): RepositoryIndex {
+  console.log(`\n=== Indexing Repository: ${repositoryPath} ===\n`)
 
-export function index(path:string){
+  const startTime = Date.now()
+  currentIndex = indexRepository(repositoryPath)
+  const duration = Date.now() - startTime
 
- const files=scanDirectory(path)
+  console.log('\n=== Index Complete ===')
+  console.log(`Total Files: ${currentIndex.statistics.totalFiles}`)
+  console.log(`Total Lines: ${currentIndex.statistics.totalLines}`)
+  console.log(`Total Symbols: ${currentIndex.statistics.symbolCount}`)
+  console.log(`Graph Edges: ${currentIndex.graph.edges.length}`)
+  console.log(`Duration: ${duration}ms`)
 
- const anchors=detectAnchors(files)
+  console.log('\nLanguage Distribution:')
+  const sortedLangs = Object.entries(currentIndex.statistics.languageDistribution)
+    .sort((a, b) => b[1] - a[1])
+  sortedLangs.forEach(([lang, count]) => {
+    console.log(`  ${lang}: ${count} files`)
+  })
 
- const patterns=minePatterns(files)
-
- const architecture=extractArchitecture(files)
-
- const embeddings=buildStructuralEmbeddings(files)
-
- const graph=buildGraph(files)
-
- indexData={
-  files,
-  anchors,
-  patterns,
-  architecture,
-  modules:{},
-  embeddings,
-  graph
- }
-
- fs.writeFileSync("agent_index.json",JSON.stringify(indexData,null,2))
-
- return indexData
+  return currentIndex
 }
 
-export function getFiles(userQuestion:string){
+export function saveIndex(outputPath: string = 'repository_index.json'): void {
+  if (!currentIndex) {
+    throw new Error('No index available. Call buildIndex() first.')
+  }
 
- if(!indexData)throw new Error("Run index() first")
+  console.log(`\nSaving index to ${outputPath}...`)
+  fs.writeFileSync(outputPath, JSON.stringify(currentIndex, null, 2))
+  console.log('Index saved successfully.')
+}
 
- const vectorResults=simpleSearch(userQuestion,indexData.embeddings)
+export function loadIndex(inputPath: string = 'repository_index.json'): RepositoryIndex {
+  console.log(`Loading index from ${inputPath}...`)
+  const data = fs.readFileSync(inputPath, 'utf-8')
+  currentIndex = JSON.parse(data)
+  console.log('Index loaded successfully.')
+  return currentIndex!
+}
 
- const seeds=vectorResults.map(v=>v.id)
+export function search(query: string, topK: number = 10): SearchResult[] {
+  if (!currentIndex) {
+    throw new Error('No index available. Call buildIndex() or loadIndex() first.')
+  }
 
- const graphExpanded=expandGraph(indexData.graph,seeds)
+  console.log(`\n=== Searching for: "${query}" ===\n`)
 
- return graphExpanded.slice(0,20)
+  const results = searchFiles(query, currentIndex.files)
+  const topResults = results.slice(0, topK)
+
+  console.log(`Found ${results.length} matching files. Showing top ${topResults.length}:\n`)
+
+  topResults.forEach((result, index) => {
+    console.log(`${index + 1}. ${result.file.path} (score: ${result.score})`)
+    console.log(`   Language: ${result.file.language}`)
+    console.log(`   Symbols: ${result.file.symbols.length}`)
+    console.log(`   Reasons: ${result.matchReasons.slice(0, 3).join(', ')}`)
+    console.log()
+  })
+
+  return topResults
+}
+
+export function searchWithGraph(query: string, topK: number = 5, graphDepth: number = 1): string[] {
+  if (!currentIndex) {
+    throw new Error('No index available. Call buildIndex() or loadIndex() first.')
+  }
+
+  const searchResults = searchFiles(query, currentIndex.files)
+  const seeds = searchResults.slice(0, topK).map(r => r.file.path)
+
+  if (seeds.length === 0) {
+    return []
+  }
+
+  const expandedFiles = expandGraphFromSeeds(seeds, currentIndex.graph, graphDepth)
+
+  console.log(`\n=== Graph Expansion ===`)
+  console.log(`Seeds: ${seeds.length}`)
+  console.log(`Expanded to: ${expandedFiles.length} files\n`)
+
+  return expandedFiles
+}
+
+export function getIndex(): RepositoryIndex | null {
+  return currentIndex
 }

@@ -59,6 +59,10 @@ export function scanRepository(rootPath: string): FileNode[] {
         }
         scanDirectory(fullPath)
       } else if (entry.isFile()) {
+        if (entry.name.startsWith('.')) {
+          continue
+        }
+
         const ext = path.extname(entry.name).toLowerCase()
 
         if (BINARY_EXTENSIONS.has(ext)) {

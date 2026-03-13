@@ -224,10 +224,12 @@ This provides complete context for LLM code understanding.
 ## Technical Highlights
 
 ### Excluded Directories
-`node_modules`, `.git`, `dist`, `build`, `target`, `out`, `bin`, `.idea`, `.vscode`, `coverage`
+`node_modules`, `.git`, `dist`, `build`, `target`, `out`, `bin`, `.idea`, `.vscode`, `coverage`, and all hidden directories (starting with `.`)
 
-### Excluded Extensions
-`.png`, `.jpg`, `.gif`, `.zip`, `.tar`, `.gz`, `.exe`, `.dll`, `.so`, `.class`, `.lock`, `.log`
+### Excluded Files
+- All hidden files (starting with `.`) including `.env`, `.gitignore`, `.eslintrc`, etc.
+- Binary files: `.png`, `.jpg`, `.gif`, `.zip`, `.tar`, `.gz`, `.exe`, `.dll`, `.so`, `.class`
+- Lock files: `.lock`, `.log`
 
 ### Import Resolution
 - Handles relative imports (`./, ../`)
